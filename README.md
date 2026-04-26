@@ -17,8 +17,8 @@ host is blocked but Vercel is reachable.
 ```
 ┌──────────┐      TLS / SNI: *.vercel.app      ┌────────────────┐      HTTP        ┌──────────────┐
 │  Client  │ ────────────────────────────────► │  Vercel Edge   │ ───────────────► │  Your Xray   │
-│ (v2rayN, │   XHTTP (uplink + downlink over  │  (this relay,  │   XHTTP frames   │  Server with │
-│ xray-core│    plain HTTP/2 POST/GET reqs)    │   Rust runtime)│  proxied 1:1     │  XHTTP inbound│
+│ (v2rayN, │   XHTTP (uplink + downlink over   │  (this relay,  │   XHTTP frames   │  Server with │
+│ xray-core│    plain HTTP/2 POST/GET reqs)    │   Rust runtime)│  proxied 1:1     │ XHTTP inbound│
 └──────────┘                                   └────────────────┘                  └──────────────┘
 ```
 
@@ -69,7 +69,7 @@ add:
 ### 3. Deploy
 
 ```bash
-git clone https://github.com/<you>/vercel-xhttp-relay.git
+git clone https://github.com/ramynn/vercel-xhttp-relay.git
 cd vercel-xhttp-relay
 
 vercel --prod
