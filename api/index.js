@@ -1,3 +1,4 @@
+// api/index.js - نسخه نهایی صحیح
 const TARGET_DOMAIN = process.env.TARGET_DOMAIN?.replace(/\/$/, '') || '';
 
 // Mock analytics system
@@ -31,7 +32,7 @@ class RequestValidator {
   static sanitizeHeaders(headers) {
     const blocked = ['host', 'connection', 'keep-alive', 'transfer-encoding', 'content-length'];
     const result = {};
-    for (const [key, value] of Object.entries(headers)) {
+    for (const [key, value] of headers) {
       if (!blocked.includes(key.toLowerCase()) && !key.toLowerCase().startsWith('x-vercel')) {
         result[key] = value;
       }
