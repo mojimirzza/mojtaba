@@ -1,74 +1,72 @@
-// api/index.js - Fixed proxy
-const TARGET_DOMAIN = process.env.TARGET_DOMAIN;
+export const config = { runtime: "edge" };
 
-export default async function handler(request) {
-  // Validate TARGET_DOMAIN is set
-  if (!TARGET_DOMAIN) {
-    return new Response(JSON.stringify({
-      error: 'Proxy not configured',
-      message: 'TARGET_DOMAIN environment variable is not set',
-      received: {
-        method: request.method,
-        url: request.url,
-        headers: Object.fromEntries(request.headers)
-      }
-    }), {
-      status: 500,
-      headers: { 'content-type': 'application/json' }
-    });
+const TARGET_BASE = (process.env.TARGET_DOMAIN || "").replace(/\/$/, "");
+
+const STRIP_HEADERS = new Set([
+  "host",
+  "connection",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+  "forwarded",
+  "x-forwarded-host",
+  "x-forwarded-proto",
+  "x-forwarded-port",
+]);
+
+function getClientIp(headers) {
+  return (
+    headers.get("x-vercel-forwarded-for") ||
+    headers.get("x-forwarded-for") ||
+    headers.get("x-real-ip") ||
+    null
+  );
+}
+
+export default async function handler(req) {
+  if (!TARGET_BASE) {
+    return new Response("Misconfigured: TARGET_DOMAIN is not set", { status: 500 });
   }
 
   try {
-    // Extract the path from the incoming request
-    const url = new URL(request.url);
-    const path = url.pathname + url.search;
-    
-    // Build the target URL
-    const targetUrl = TARGET_DOMAIN.replace(/\/$/, '') + path;
+    const incoming = new URL(req.url);
 
-    // Prepare headers - remove Vercel-specific headers
-    const headers = new Headers(request.headers);
-    headers.delete('host');
-    headers.set('x-forwarded-for', request.headers.get('x-forwarded-for') || request.ip || 'unknown');
+    // Forwards the full incoming path + query to the target.
+    const targetUrl = `${TARGET_BASE}${incoming.pathname}${incoming.search}`;
 
-    // Prepare fetch options
-    const fetchOptions = {
-      method: request.method,
-      headers: headers,
-      redirect: 'follow'
-    };
-
-    // Add body for non-GET requests
-    if (request.method !== 'GET' && request.method !== 'HEAD') {
-      fetchOptions.body = request.body;
-      fetchOptions.duplex = 'half';
+    const out = new Headers();
+    for (const [k, v] of req.headers) {
+      const key = k.toLowerCase();
+      if (STRIP_HEADERS.has(key)) continue;
+      if (key.startsWith("x-vercel-")) continue;
+      out.set(key, v);
     }
 
-    // Make the actual request to target domain
-    const response = await fetch(targetUrl, fetchOptions);
+    const clientIp = getClientIp(req.headers);
+    if (clientIp) out.set("x-forwarded-for", clientIp);
 
-    // Prepare response headers
-    const responseHeaders = new Headers(response.headers);
-    responseHeaders.delete('connection');
-    responseHeaders.delete('keep-alive');
-    responseHeaders.delete('transfer-encoding');
+    const method = req.method.toUpperCase();
+    const hasBody = method !== "GET" && method !== "HEAD";
 
-    // Return the response
-    return new Response(response.body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: responseHeaders
+    const upstream = await fetch(targetUrl, {
+      method,
+      headers: out,
+      body: hasBody ? req.body : undefined,
+      duplex: hasBody ? "half" : undefined,
+      redirect: "manual",
     });
 
-  } catch (error) {
-    console.error('Proxy error:', error.message);
-    return new Response(JSON.stringify({
-      error: 'Proxy failed',
-      message: error.message,
-      timestamp: new Date().toISOString()
-    }), {
-      status: 502,
-      headers: { 'content-type': 'application/json' }
+    return new Response(upstream.body, {
+      status: upstream.status,
+      statusText: upstream.statusText,
+      headers: upstream.headers,
     });
+  } catch (err) {
+    console.error("relay error:", err);
+    return new Response("Bad Gateway: Tunnel Failed", { status: 502 });
   }
 }
